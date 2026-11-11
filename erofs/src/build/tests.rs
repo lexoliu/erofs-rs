@@ -662,7 +662,7 @@ mod directory {
             assert_eq!(entry.dir_entry.file_type(), DirentFileType::Fifo);
             let inode = entry.inode;
             assert_eq_all! {
-                inode.file_type() => rustix::fs::FileType::Fifo;
+                inode.file_type() => crate::types::FileType::Fifo;
                 inode.nlink() => 2;
                 image[inode.id() as usize * 32] & 1 =>
                     u8::from(metadata.uid() > 65535 || metadata.gid() > 65535);
@@ -3073,7 +3073,7 @@ mod r#async {
             let inode = entry.inode;
             assert_eq_all! {
                 entry.dir_entry.file_type() => kind;
-                inode.file_type() => rustix::fs::FileType::from_raw_mode(mode as _);
+                inode.file_type() => crate::types::FileType::from_raw_mode(mode as _);
                 inode.device() => device;
                 inode.layout() => None;
                 inode.data_size() => 0;

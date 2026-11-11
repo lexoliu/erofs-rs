@@ -1,10 +1,10 @@
 use alloc::{format, string::ToString, sync::Arc};
 use core::ops::Range;
 
+use crate::types::FileType;
 use binrw::BinRead;
 use binrw::io::Cursor;
 use bytes::Buf;
-use rustix::fs::FileType;
 
 use crate::compression::{CompressedRead, EncodedExtent};
 use crate::devices::{DeviceInfo, DeviceTable, SLOT_SIZE};

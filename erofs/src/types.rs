@@ -7,9 +7,70 @@ use std::{
 
 use alloc::format;
 use binrw::BinRead;
-use rustix::fs::FileType;
 
 use crate::Error;
+
+/// Inode type, decoded from the `S_IFMT` bits of an on-disk mode.
+///
+/// The encoding is the POSIX one EROFS stores, so decoding needs no host
+/// operating system and works on bare-metal targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FileType {
+    RegularFile,
+    Directory,
+    Symlink,
+    Fifo,
+    Socket,
+    CharacterDevice,
+    BlockDevice,
+    Unknown,
+}
+
+impl FileType {
+    const FORMAT_MASK: u32 = 0o170000;
+
+    /// Decodes the type bits of a raw mode, ignoring the permission bits.
+    pub const fn from_raw_mode(mode: u32) -> Self {
+        match mode & Self::FORMAT_MASK {
+            0o100000 => Self::RegularFile,
+            0o040000 => Self::Directory,
+            0o120000 => Self::Symlink,
+            0o010000 => Self::Fifo,
+            0o140000 => Self::Socket,
+            0o020000 => Self::CharacterDevice,
+            0o060000 => Self::BlockDevice,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub const fn is_dir(self) -> bool {
+        matches!(self, Self::Directory)
+    }
+
+    pub const fn is_file(self) -> bool {
+        matches!(self, Self::RegularFile)
+    }
+
+    pub const fn is_symlink(self) -> bool {
+        matches!(self, Self::Symlink)
+    }
+
+    pub const fn is_fifo(self) -> bool {
+        matches!(self, Self::Fifo)
+    }
+
+    pub const fn is_socket(self) -> bool {
+        matches!(self, Self::Socket)
+    }
+
+    pub const fn is_char_device(self) -> bool {
+        matches!(self, Self::CharacterDevice)
+    }
+
+    pub const fn is_block_device(self) -> bool {
+        matches!(self, Self::BlockDevice)
+    }
+}
 
 pub const MAGIC_NUMBER: u32 = 0xe0f5e1e2;
 pub const SUPER_BLOCK_OFFSET: u64 = 1024;
