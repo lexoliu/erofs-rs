@@ -14,10 +14,12 @@ bytes = { version = "1", default-features = false }
 chrono = { version = "0.4", default-features = false }
 clap = { version = "4", default-features = false }
 crc32c = { version = "0.6", default-features = false }
-lz4_flex = { git = "https://github.com/Dreamacro/lz4_flex", rev = "46f45f2b6e15b9fd0fa3b8614891fb8228fe6e40", default-features = false }
+# The bounded-prefix encoders the image builder uses are not in a crates.io
+# release of either crate yet.
+lz4_flex = { git = "https://github.com/Dreamacro/lz4_flex", branch = "feat/block-compress-prefix", default-features = false }
 lzma-rust2 = { version = "0.25", default-features = false }
 memmap2 = { version = "0.9", default-features = false }
-miniz_oxide = { git = "https://github.com/Frommi/miniz_oxide", rev = "b28c237471f63efebe152bddd962dc57bbb531eb", default-features = false }
+miniz_oxide = { git = "https://github.com/Frommi/miniz_oxide", branch = "master", default-features = false }
 opendal = { version = "0.59", default-features = false }
 rustix = { version = "1.1.6", default-features = false }
 tar = { version = "0.4", default-features = false }

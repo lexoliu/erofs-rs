@@ -203,7 +203,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 [[package]]
 name = "lz4_flex"
 version = "0.14.0"
-source = "git+https://github.com/Dreamacro/lz4_flex?rev=46f45f2b6e15b9fd0fa3b8614891fb8228fe6e40#46f45f2b6e15b9fd0fa3b8614891fb8228fe6e40"
+source = "git+https://github.com/Dreamacro/lz4_flex?branch=feat%2Fblock-compress-prefix#46f45f2b6e15b9fd0fa3b8614891fb8228fe6e40"
 
 [[package]]
 name = "lzma-rust2"
@@ -223,7 +223,7 @@ dependencies = [
 [[package]]
 name = "miniz_oxide"
 version = "0.9.1"
-source = "git+https://github.com/Frommi/miniz_oxide?rev=b28c237471f63efebe152bddd962dc57bbb531eb#b28c237471f63efebe152bddd962dc57bbb531eb"
+source = "git+https://github.com/Frommi/miniz_oxide?branch=master#b28c237471f63efebe152bddd962dc57bbb531eb"
 dependencies = [
  "adler2",
 ]
