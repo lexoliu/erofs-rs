@@ -186,6 +186,120 @@ fn directory_block_failures_do_not_skip_entries() {
 }
 
 #[test]
+fn lookups_resolve_paths_without_following_links() {
+    let data = image();
+    let source = Source {
+        data: SliceImage::new(&data),
+        reads: AtomicUsize::new(0),
+        fail: AtomicBool::new(false),
+    };
+    let fs = crate::EroFS::new(&source).unwrap();
+    let afs = ready(crate::r#async::EroFS::new(&source)).unwrap();
+    for (path, nid) in [
+        ("/", Some(1)),
+        ("/a", Some(2)),
+        ("b", Some(3)),
+        ("/c", None),
+    ] {
+        assert_eq!(fs.lookup(path).unwrap().map(|inode| inode.id()), nid);
+        assert_eq!(
+            ready(afs.lookup(path)).unwrap().map(|inode| inode.id()),
+            nid
+        );
+    }
+    assert!(matches!(fs.lookup("/a/x"), Err(Error::NotADirectory(_))));
+    assert!(matches!(
+        ready(afs.lookup("/a/")),
+        Err(Error::NotADirectory(_))
+    ));
+}
+
+#[test]
+fn directory_listings_resume_at_their_reported_positions() {
+    use crate::DirPosition;
+
+    let data = image();
+    let source = Source {
+        data: SliceImage::new(&data),
+        reads: AtomicUsize::new(0),
+        fail: AtomicBool::new(false),
+    };
+    let fs = crate::EroFS::new(&source).unwrap();
+    let afs = ready(crate::r#async::EroFS::new(&source)).unwrap();
+    let root = fs.lookup("/").unwrap().unwrap();
+
+    // Entry `a` sits at index 2 of the first 512-byte block, `b` at index 0 of
+    // the second; the listing ends at the directory's 1024 bytes.
+    let mut positions = vec![DirPosition::START];
+    let mut dir = fs.read_dir_inode(root).unwrap();
+    let mut adir = ready(afs.read_dir_inode(root)).unwrap();
+    for name in [b"a".as_slice(), b"b"] {
+        let entry = dir.next().unwrap().unwrap();
+        let aentry = ready(adir.next_entry()).unwrap().unwrap();
+        assert_eq!(entry.file_name(), name);
+        assert_eq!(aentry.file_name(), name);
+        assert_eq!(entry.path().as_bytes(), name);
+        assert_eq!(dir.position(), adir.position());
+        positions.push(dir.position());
+    }
+    assert!(dir.next().is_none());
+    assert!(ready(adir.next_entry()).unwrap().is_none());
+    assert_eq!(dir.position(), DirPosition::new(1024));
+    assert_eq!(
+        positions,
+        [
+            DirPosition::START,
+            DirPosition::new(3),
+            DirPosition::new(513)
+        ]
+    );
+
+    let expected: [&[&[u8]]; 3] = [&[b"a", b"b"], &[b"b"], &[]];
+    for (position, names) in positions.iter().zip(expected) {
+        let raw = DirPosition::new(position.raw());
+        let listed: Vec<Vec<u8>> = fs
+            .read_dir_inode_at(root, raw)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_vec())
+            .collect();
+        assert_eq!(listed, names);
+        let mut adir = ready(afs.read_dir_inode_at(root, raw)).unwrap();
+        let mut alisted = Vec::new();
+        while let Some(entry) = ready(adir.next_entry()).unwrap() {
+            alisted.push(entry.file_name().to_vec());
+        }
+        assert_eq!(alisted, names);
+    }
+    for raw in [1024, 4096] {
+        assert!(
+            fs.read_dir_inode_at(root, DirPosition::new(raw))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+    }
+
+    // Past the last entry of a block is no position in it.
+    assert!(matches!(
+        fs.read_dir_inode_at(root, DirPosition::new(4)),
+        Err(Error::OutOfRange(4, 3))
+    ));
+    assert!(matches!(
+        ready(afs.read_dir_inode_at(root, DirPosition::new(4))),
+        Err(Error::OutOfRange(4, 3))
+    ));
+    let file = fs.lookup("/a").unwrap().unwrap();
+    assert!(matches!(
+        fs.read_dir_inode(file),
+        Err(Error::NotADirectory(_))
+    ));
+    assert!(matches!(
+        ready(afs.read_dir_inode(file)),
+        Err(Error::NotADirectory(_))
+    ));
+}
+
+#[test]
 fn walking_uses_inode_types_and_rejects_ancestor_cycles() {
     let mut data = image();
     data[4130] = 1; // A directory advertised as a regular file.

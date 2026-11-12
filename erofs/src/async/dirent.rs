@@ -3,9 +3,12 @@ use typed_path::{UnixPath, UnixPathBuf};
 
 use super::EroFS;
 use crate::backend::AsyncImage;
-use crate::dirent::{DirEntry, DirentBlock};
+use crate::dirent::{DirEntry, DirPosition, DirentBlock};
 use crate::{Result, types::Inode};
 
+/// The entries of one directory, in on-disk order, without reading their inodes.
+///
+/// Created by [`EroFS::read_dir_inode`] or [`EroFS::read_dir_inode_at`].
 pub struct ReadDir<'a, I: AsyncImage> {
     dir: UnixPathBuf,
     pub(super) inode: Inode,
@@ -20,15 +23,44 @@ impl<'a, I: AsyncImage> ReadDir<'a, I> {
         inode: Inode,
         dir: P,
     ) -> Result<Self> {
-        let block_data = erofs.read_inode_block(&inode, 0).await?;
-        let dirent_block = DirentBlock::new(block_data)?;
+        Self::at(erofs, inode, dir, DirPosition::START).await
+    }
+
+    /// Opens the listing at `position`, which must fall on an entry of the
+    /// directory or be its end.
+    pub(crate) async fn at<P: AsRef<UnixPath>>(
+        erofs: &'a EroFS<I>,
+        inode: Inode,
+        dir: P,
+        position: DirPosition,
+    ) -> Result<Self> {
+        let size = inode.data_size();
+        // At the end of the listing the first block stands in, never read from.
+        let end = position.raw() >= size;
+        let (block_offset, index) = if end {
+            (0, 0)
+        } else {
+            position.split(erofs.block_size())
+        };
+        let block_data = erofs.read_inode_block(&inode, block_offset).await?;
+        let mut dirent_block = DirentBlock::new(block_data)?;
+        dirent_block.seek(index)?;
         Ok(Self {
             dir: dir.as_ref().to_path_buf(),
             inode,
             erofs,
             dirent_block,
-            offset: 0,
+            offset: if end { size } else { block_offset },
         })
+    }
+
+    /// Where the listing resumes after the entries it has yielded.
+    pub fn position(&self) -> DirPosition {
+        if self.offset >= self.inode.data_size() {
+            DirPosition::new(self.inode.data_size())
+        } else {
+            DirPosition::at(self.offset, self.dirent_block.next_index())
+        }
     }
 
     pub async fn next_entry(&mut self) -> Result<Option<DirEntry>> {

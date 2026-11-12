@@ -107,6 +107,20 @@ impl<D: AsRef<[u8]>> DirentBlock<D> {
         self.data.as_ref().len()
     }
 
+    /// The index of the next entry this block yields, `.` and `..` included.
+    pub(crate) fn next_index(&self) -> usize {
+        self.i
+    }
+
+    /// Resumes this block at entry `index`; `index` may equal the entry count.
+    pub(crate) fn seek(&mut self, index: usize) -> Result<()> {
+        if index > self.n {
+            return Err(Error::OutOfRange(index as u64, self.n as u64));
+        }
+        self.i = index;
+        Ok(())
+    }
+
     pub(crate) fn next_entry(&mut self, root: &UnixPath) -> Result<Option<DirEntry>> {
         let data = self.data.as_ref();
         while self.i < self.n {
@@ -126,6 +140,43 @@ impl<D: AsRef<[u8]>> DirentBlock<D> {
             return Ok(Some(entry));
         }
         Ok(None)
+    }
+}
+
+/// Where a directory listing resumes, as [`crate::ReadDir::position`] and its
+/// async twin report it.
+///
+/// The value is the byte offset of a directory block plus the index of the next
+/// entry within it. An index is always smaller than its block, so the sum names
+/// one place in one directory and round-trips through [`Self::raw`] and
+/// [`Self::new`]. A position that does not fall on an entry of the directory it
+/// is resumed in is refused when the listing is opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct DirPosition(u64);
+
+impl DirPosition {
+    /// The first entry of a directory.
+    pub const START: Self = Self(0);
+
+    /// The position a previous [`Self::raw`] returned.
+    pub const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The position as a plain integer, for a caller that stores it.
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+
+    pub(crate) const fn at(block_offset: u64, index: usize) -> Self {
+        Self(block_offset + index as u64)
+    }
+
+    /// The block offset and entry index, for a directory of `block_size`-byte
+    /// blocks.
+    pub(crate) const fn split(self, block_size: u64) -> (u64, usize) {
+        let index = self.0 % block_size;
+        (self.0 - index, index as usize)
     }
 }
 

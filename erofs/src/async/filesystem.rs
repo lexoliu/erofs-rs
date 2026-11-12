@@ -4,10 +4,11 @@ use bytes::BufMut;
 
 use typed_path::{UnixPath, UnixPathBuf};
 
+use super::dirent::ReadDir;
 use super::file::File;
 use super::walkdir::WalkDir;
 use crate::backend::AsyncImage;
-use crate::dirent;
+use crate::dirent::{self, DirPosition};
 use crate::filesystem::{BlockPlan, EroFSCore};
 use crate::metadata::{self, ReadSource};
 use crate::types::*;
@@ -89,6 +90,46 @@ impl<I: AsyncImage> EroFS<I> {
     /// Lists the immediate contents of a directory.
     pub async fn read_dir(&self, path: impl AsRef<UnixPath>) -> Result<WalkDir<'_, I>> {
         Ok(WalkDir::new(self, path.as_ref()).await?.max_depth(1))
+    }
+
+    /// Lists a directory inode's entries, `.` and `..` excepted, without reading
+    /// the entries' inodes.
+    ///
+    /// The inode must originate from this filesystem. Entry paths are relative
+    /// to the directory.
+    pub async fn read_dir_inode(&self, inode: Inode) -> Result<ReadDir<'_, I>> {
+        self.read_dir_inode_at(inode, DirPosition::START).await
+    }
+
+    /// Lists a directory inode's entries from `position`, a value a previous
+    /// [`ReadDir::position`] over the same directory returned.
+    ///
+    /// A position that falls on no entry of this directory is refused.
+    pub async fn read_dir_inode_at(
+        &self,
+        inode: Inode,
+        position: DirPosition,
+    ) -> Result<ReadDir<'_, I>> {
+        if !inode.is_dir() {
+            return Err(Error::NotADirectory(format!(
+                "inode {} is not a directory",
+                inode.id()
+            )));
+        }
+        ReadDir::at(self, inode, UnixPathBuf::new(), position).await
+    }
+
+    /// Resolves `path` to its inode without following symbolic links.
+    ///
+    /// Returns `Ok(None)` when nothing exists at `path`, and
+    /// [`Error::NotADirectory`] when a component before the last, or a last
+    /// component followed by `/`, is not a directory.
+    pub async fn lookup(&self, path: impl AsRef<UnixPath>) -> Result<Option<Inode>> {
+        self.get_path_inode(path.as_ref()).await
+    }
+
+    pub(crate) fn block_size(&self) -> u64 {
+        self.core.block_size
     }
 
     /// Opens a file at the given path for reading.
