@@ -1,3 +1,4 @@
+use core::convert::Infallible;
 use std::{
     borrow::Borrow,
     io::{self, SeekFrom},
@@ -20,6 +21,9 @@ use crate::{
 /// Uses the library's [`AsyncRead`], [`AsyncWrite`] and [`AsyncSeek`] backend traits,
 /// following the same async-function model as `backend::AsyncImage`. Memory cursors,
 /// byte-slice inputs and EROFS async file inputs work without a runtime dependency.
+/// A source's failures must travel as this crate's own variants (`Infallible`
+/// [`AsyncRead::Error`]), so an EROFS file input comes from an image whose
+/// backend reports that way.
 /// The optional `tokio` feature provides `backend::TokioIo` for Tokio types.
 ///
 /// Path, metadata, hard-link and format rules are shared with `Builder`.
@@ -102,7 +106,7 @@ impl<W: AsyncWrite + AsyncSeek> AsyncBuilder<W> {
         path: impl AsRef<UnixPath>,
         metadata: impl Borrow<Metadata>,
         size: u64,
-        data: impl AsyncRead,
+        data: impl AsyncRead<Error = Infallible>,
     ) -> Result<()> {
         self.append_payload(path.as_ref(), metadata.borrow(), Content::File, size, data)
             .await
@@ -192,7 +196,7 @@ impl<W: AsyncWrite + AsyncSeek> AsyncBuilder<W> {
         metadata: &Metadata,
         content: Content,
         size: u64,
-        mut data: impl AsyncRead,
+        mut data: impl AsyncRead<Error = Infallible>,
     ) -> Result<()> {
         let entry = self
             .state
@@ -230,7 +234,7 @@ impl<W: AsyncWrite + AsyncSeek> AsyncBuilder<W> {
     async fn append_flat(
         &mut self,
         entry: super::PendingEntry,
-        data: &mut impl AsyncRead,
+        data: &mut impl AsyncRead<Error = Infallible>,
     ) -> Result<()> {
         let external_size = entry.node.external_size();
         if external_size != 0 {
@@ -297,7 +301,7 @@ impl<W: AsyncWrite + AsyncSeek> AsyncBuilder<W> {
     async fn append_compressed(
         &mut self,
         mut entry: super::PendingEntry,
-        data: &mut impl AsyncRead,
+        data: &mut impl AsyncRead<Error = Infallible>,
     ) -> Result<()> {
         use super::compress::{Compressor, INPUT_SIZE, Placement};
 
@@ -420,7 +424,7 @@ async fn write_at(
 }
 
 async fn copy_exact(
-    data: &mut impl AsyncRead,
+    data: &mut impl AsyncRead<Error = Infallible>,
     output: &mut impl AsyncWrite,
     mut size: u64,
 ) -> Result<()> {
@@ -434,7 +438,10 @@ async fn copy_exact(
     Ok(())
 }
 
-async fn read_exact(data: &mut impl AsyncRead, mut buf: &mut [u8]) -> Result<()> {
+async fn read_exact(
+    data: &mut impl AsyncRead<Error = Infallible>,
+    mut buf: &mut [u8],
+) -> Result<()> {
     while !buf.is_empty() {
         let n = read_chunk(data, buf).await?;
         buf = &mut buf[n..];
@@ -443,7 +450,10 @@ async fn read_exact(data: &mut impl AsyncRead, mut buf: &mut [u8]) -> Result<()>
 }
 
 // Both payload phases require progress and must reject invalid backend counts.
-async fn read_chunk(data: &mut impl AsyncRead, buf: &mut [u8]) -> Result<usize> {
+async fn read_chunk(
+    data: &mut impl AsyncRead<Error = Infallible>,
+    buf: &mut [u8],
+) -> Result<usize> {
     let n = data.read(buf).await?;
     if n == 0 {
         return Err(io::Error::new(

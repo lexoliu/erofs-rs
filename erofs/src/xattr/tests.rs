@@ -494,6 +494,8 @@ impl Image for &Sparse<'_> {
 }
 
 impl AsyncImage for &Sparse<'_> {
+    type Error = core::convert::Infallible;
+
     async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()> {
         let data = self
             .get(offset..offset + buf.len() as u64)

@@ -39,6 +39,9 @@ impl<T> TokioIo<T> {
 }
 
 impl<T: tokio::io::AsyncRead + Unpin + Send> AsyncRead for TokioIo<T> {
+    // Failures travel as `Error::Io`.
+    type Error = core::convert::Infallible;
+
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if buf.is_empty() {
             return Ok(0);

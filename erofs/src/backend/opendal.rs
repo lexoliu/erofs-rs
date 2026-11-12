@@ -16,6 +16,9 @@ impl OpendalImage {
 }
 
 impl AsyncImage for OpendalImage {
+    // Failures travel as `Error::Opendal` and `Error::Io`.
+    type Error = core::convert::Infallible;
+
     async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()> {
         if buf.is_empty() {
             return Ok(());

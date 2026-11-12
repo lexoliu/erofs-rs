@@ -394,6 +394,8 @@ fn wide_chunk_addresses_reach_devices_without_host_sized_offsets() {
     }
 
     impl AsyncImage for &Window<'_> {
+        type Error = core::convert::Infallible;
+
         async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()> {
             if !buf.is_empty() {
                 buf.copy_from_slice(

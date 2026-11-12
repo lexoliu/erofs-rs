@@ -91,6 +91,6 @@ pub mod types;
 
 pub use devices::DeviceInfo;
 pub use dirent::{DirEntry, DirPosition};
-pub use error::*;
+pub use error::{Error, Result};
 pub use sync::{EroFS, ReadDir, WalkDir, WalkDirEntry};
 pub use xattr::Xattrs;

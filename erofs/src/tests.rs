@@ -38,6 +38,8 @@ impl Image for &Source<'_> {
 }
 
 impl AsyncImage for &Source<'_> {
+    type Error = core::convert::Infallible;
+
     async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()> {
         if buf.is_empty() {
             return Ok(());
@@ -591,4 +593,59 @@ fn symlink_reads_preserve_bytes_and_validate_targets() {
             }
         }
     }
+}
+
+/// A backend failure the reader must hand back untouched.
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("device fault at offset {0}")]
+struct Fault(u64);
+
+struct Faulty<'a>(&'a Source<'a>);
+
+impl AsyncImage for Faulty<'_> {
+    type Error = Fault;
+
+    async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<(), Fault> {
+        if self.0.fail.load(Relaxed) {
+            return Err(Error::Image(Fault(offset)));
+        }
+        AsyncImage::read_exact_at(&self.0, buf, offset)
+            .await
+            .map_err(Error::widen)
+    }
+}
+
+#[test]
+fn image_read_failures_surface_as_the_backend_error() {
+    let data = image();
+    let source = Source {
+        data: SliceImage::new(&data),
+        reads: AtomicUsize::new(0),
+        fail: AtomicBool::new(false),
+    };
+    let fs = ready(crate::r#async::EroFS::new(Faulty(&source))).unwrap();
+    let root = ready(fs.lookup("/")).unwrap().unwrap();
+    let file = ready(fs.open("/a")).unwrap();
+    let mut buf = [0; 16];
+    assert_eq!(ready(file.read_at(&mut buf, 0)).unwrap(), 16);
+    assert_eq!(buf, [b'A'; 16]);
+
+    source.fail.store(true, Relaxed);
+    // Inode 2's data starts at block 10, and the root directory's at block 8.
+    assert!(matches!(
+        ready(file.read_at(&mut buf, 0)),
+        Err(Error::Image(Fault(5120)))
+    ));
+    assert!(matches!(
+        ready(fs.read_dir_inode(root)),
+        Err(Error::Image(Fault(4096)))
+    ));
+    assert!(matches!(
+        ready(fs.lookup("/b")),
+        Err(Error::Image(Fault(_)))
+    ));
+    assert!(matches!(
+        ready(crate::r#async::EroFS::new(Faulty(&source))),
+        Err(Error::Image(Fault(1024)))
+    ));
 }

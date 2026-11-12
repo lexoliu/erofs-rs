@@ -1034,6 +1034,8 @@ mod r#async {
     }
 
     impl AsyncRead for Reader {
+        type Error = core::convert::Infallible;
+
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
             if buf.is_empty() {
                 return Ok(0);
@@ -1056,6 +1058,8 @@ mod r#async {
     }
 
     impl AsyncRead for Unread {
+        type Error = core::convert::Infallible;
+
         async fn read(&mut self, _: &mut [u8]) -> Result<usize> {
             panic!("source must not be read")
         }
@@ -3268,6 +3272,8 @@ mod r#async {
         struct Oversized;
 
         impl AsyncRead for Oversized {
+            type Error = core::convert::Infallible;
+
             async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 Ok(buf.len() + 1)
             }
@@ -3325,6 +3331,8 @@ mod r#async {
         struct PendingTail<'a>(&'a [u8]);
 
         impl AsyncRead for PendingTail<'_> {
+            type Error = core::convert::Infallible;
+
             async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 if self.0.is_empty() && !buf.is_empty() {
                     core::future::pending().await

@@ -1,3 +1,4 @@
+use core::convert::Infallible;
 use core::future::Future;
 
 use bytes::Buf;
@@ -9,20 +10,31 @@ use crate::Result;
 /// Like [`super::AsyncImage`], this uses `Send` futures rather than a runtime's
 /// polling traits. Implementations must not perform blocking I/O on the executor.
 pub trait AsyncRead: Send {
+    /// The source's own read failure, returned as
+    /// [`Error::Image`](crate::Error::Image); an EROFS file handle reports its
+    /// image's [`AsyncImage::Error`](super::AsyncImage::Error). A source that
+    /// cannot fail on its own, or reports through an existing variant, uses
+    /// `Infallible`.
+    type Error: core::error::Error + Send + Sync + 'static;
+
     /// Reads up to `buf.len()` bytes. Short reads are allowed; zero means EOF
     /// unless the buffer is empty. Never return a count larger than the buffer.
     /// Empty reads must succeed with zero without I/O. On error or cancellation,
     /// the buffer and stream position may have changed unless documented otherwise.
-    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
+    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>> + Send;
 }
 
 impl<R: AsyncRead + ?Sized> AsyncRead for &mut R {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    type Error = R::Error;
+
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, R::Error> {
         R::read(self, buf).await
     }
 }
 
 impl AsyncRead for &[u8] {
+    type Error = Infallible;
+
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let n = self.len().min(buf.len());
         self.copy_to_slice(&mut buf[..n]);
@@ -75,6 +87,8 @@ mod output {
     // Only memory-backed std I/O is adapted directly. Adapting arbitrary std
     // Read/Write types here would silently block the caller's async executor.
     impl<T: AsRef<[u8]> + Send> AsyncRead for Cursor<T> {
+        type Error = Infallible;
+
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
             Ok(Read::read(self, buf)?)
         }

@@ -130,12 +130,15 @@ pub trait Image {
 /// # Examples
 ///
 /// ```no_run
+/// use core::convert::Infallible;
 /// use erofs_rs::backend::AsyncImage;
 /// use erofs_rs::{Error, Result};
 ///
 /// struct MyAsyncImage(Vec<u8>);
 ///
 /// impl AsyncImage for MyAsyncImage {
+///     type Error = Infallible;
+///
 ///     async fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<()> {
 ///         if buf.is_empty() {
 ///             return Ok(());
@@ -151,6 +154,11 @@ pub trait Image {
 /// }
 /// ```
 pub trait AsyncImage: Send + Sync {
+    /// The backend's own read failure, which the reader returns unchanged as
+    /// [`Error::Image`](crate::Error::Image). A backend that cannot fail on its
+    /// own, or reports through an existing variant, uses `Infallible`.
+    type Error: core::error::Error + Send + Sync + 'static;
+
     /// Asynchronously fills `buf` from the image at a specific offset.
     ///
     /// # Arguments
@@ -168,6 +176,9 @@ pub trait AsyncImage: Send + Sync {
     ///
     /// Returns an error if the read operation fails or the image ends before
     /// `buf` is filled. On error, `buf` may have been partially modified.
-    fn read_exact_at(&self, buf: &mut [u8], offset: u64)
-    -> impl Future<Output = Result<()>> + Send;
+    fn read_exact_at(
+        &self,
+        buf: &mut [u8],
+        offset: u64,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

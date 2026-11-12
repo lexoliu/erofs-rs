@@ -4,6 +4,7 @@ use typed_path::{UnixPath, UnixPathBuf};
 use super::EroFS;
 use crate::backend::AsyncImage;
 use crate::dirent::{DirEntry, DirPosition, DirentBlock};
+use crate::error::Widen;
 use crate::{Result, types::Inode};
 
 /// The entries of one directory, in on-disk order, without reading their inodes.
@@ -22,7 +23,7 @@ impl<'a, I: AsyncImage> ReadDir<'a, I> {
         erofs: &'a EroFS<I>,
         inode: Inode,
         dir: P,
-    ) -> Result<Self> {
+    ) -> Result<Self, I::Error> {
         Self::at(erofs, inode, dir, DirPosition::START).await
     }
 
@@ -33,7 +34,7 @@ impl<'a, I: AsyncImage> ReadDir<'a, I> {
         inode: Inode,
         dir: P,
         position: DirPosition,
-    ) -> Result<Self> {
+    ) -> Result<Self, I::Error> {
         let size = inode.data_size();
         // At the end of the listing the first block stands in, never read from.
         let end = position.raw() >= size;
@@ -43,8 +44,8 @@ impl<'a, I: AsyncImage> ReadDir<'a, I> {
             position.split(erofs.block_size())
         };
         let block_data = erofs.read_inode_block(&inode, block_offset).await?;
-        let mut dirent_block = DirentBlock::new(block_data)?;
-        dirent_block.seek(index)?;
+        let mut dirent_block = DirentBlock::new(block_data).widen()?;
+        dirent_block.seek(index).widen()?;
         Ok(Self {
             dir: dir.as_ref().to_path_buf(),
             inode,
@@ -63,15 +64,15 @@ impl<'a, I: AsyncImage> ReadDir<'a, I> {
         }
     }
 
-    pub async fn next_entry(&mut self) -> Result<Option<DirEntry>> {
+    pub async fn next_entry(&mut self) -> Result<Option<DirEntry>, I::Error> {
         while self.offset < self.inode.data_size() {
-            if let Some(entry) = self.dirent_block.next_entry(&self.dir)? {
+            if let Some(entry) = self.dirent_block.next_entry(&self.dir).widen()? {
                 return Ok(Some(entry));
             }
             let offset = self.offset + self.dirent_block.block_size() as u64;
             if offset < self.inode.data_size() {
                 let block = self.erofs.read_inode_block(&self.inode, offset).await?;
-                self.dirent_block = DirentBlock::new(block)?;
+                self.dirent_block = DirentBlock::new(block).widen()?;
             }
             self.offset = offset;
         }

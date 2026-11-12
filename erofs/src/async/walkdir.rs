@@ -16,7 +16,10 @@ pub struct WalkDir<'a, I: AsyncImage> {
 }
 
 impl<'a, I: AsyncImage> WalkDir<'a, I> {
-    pub(crate) async fn new(erofs: &'a EroFS<I>, root: impl AsRef<UnixPath>) -> Result<Self> {
+    pub(crate) async fn new(
+        erofs: &'a EroFS<I>,
+        root: impl AsRef<UnixPath>,
+    ) -> Result<Self, I::Error> {
         let read_dir = {
             let inode = erofs
                 .get_path_inode(root.as_ref())
@@ -51,7 +54,7 @@ impl<'a, I: AsyncImage> WalkDir<'a, I> {
         &mut self,
         dir_entry: DirEntry,
         depth: usize,
-    ) -> Result<WalkDirEntry> {
+    ) -> Result<WalkDirEntry, I::Error> {
         let inode = self.erofs.get_inode(dir_entry.nid()).await?;
 
         if inode.is_dir() {
@@ -75,7 +78,7 @@ impl<'a, I: AsyncImage> WalkDir<'a, I> {
         })
     }
 
-    pub async fn next_entry(&mut self) -> Option<Result<WalkDirEntry>> {
+    pub async fn next_entry(&mut self) -> Option<Result<WalkDirEntry, I::Error>> {
         loop {
             let depth = self.dir_stack.len();
             let next_item = self.dir_stack.last_mut()?.next_entry().await;

@@ -17,7 +17,9 @@ pub struct File<'a, I: AsyncImage> {
 }
 
 impl<I: AsyncImage> AsyncRead for File<'_, I> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    type Error = I::Error;
+
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, I::Error> {
         File::read(self, buf).await
     }
 }
@@ -43,7 +45,7 @@ impl<'a, I: AsyncImage> File<'a, I> {
     /// Short reads are allowed. Errors or cancellation leave `buf` unchanged.
     /// Positioned reads do not populate the sequential cache, so repeated reads
     /// may decode an extent again.
-    pub async fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+    pub async fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize, I::Error> {
         if buf.is_empty() || offset >= self.size() {
             return Ok(0);
         }
@@ -57,7 +59,7 @@ impl<'a, I: AsyncImage> File<'a, I> {
     ///
     /// Returns the number of bytes read, or `0` at EOF or for an empty buffer.
     /// A successful read may fill only part of `buf`. Errors do not advance the position.
-    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, I::Error> {
         if buf.is_empty() || self.offset >= self.inode.data_size() {
             return Ok(0);
         }
