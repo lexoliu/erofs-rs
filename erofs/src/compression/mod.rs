@@ -505,7 +505,11 @@ impl CompressedRead {
                             return Err(Error::NotSupported(format!("LZMA format {format}")));
                         }
                     }
-                    2 if !(8..=15).contains(&data[0]) => {
+                    // Linux's EROFS accepts any value up to 15 and inflates
+                    // with its fixed window. erofs-utils 1.7.1 writes 0 when no
+                    // dictionary size is set, and the decoder below always
+                    // inflates with a 32 KiB window, so the value is only checked.
+                    2 if data[0] > 15 => {
                         return Err(Error::CorruptedData(
                             "invalid DEFLATE window bits".to_string(),
                         ));
